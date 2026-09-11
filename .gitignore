@@ -1,0 +1,27 @@
+# generated / run artefacts
+logs/
+outputs/
+MUJOCO_LOG.TXT
+*.log
+
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+
+# isaac / usd conversion artefacts
+*.usd
+*.usda
+*.usdc
+
+# editors / os
+.vscode/
+.idea/
+.DS_Store
+
+# local backups
+*.orig_backup*

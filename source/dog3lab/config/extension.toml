@@ -1,0 +1,22 @@
+[package]
+
+# Semantic Versioning is used: https://semver.org/
+version = "0.1.0"
+
+# Description
+category = "isaaclab"
+readme  = "README.md"
+
+title = "dog3lab"
+author = "you"
+maintainer = "you"
+description = "InstinctLab-style RL tasks for the dog3 quadruped (12-DOF legged)."
+repository = ""
+keywords = ["quadruped", "dog3", "isaaclab", "reinforcement-learning"]
+
+[dependencies]
+"isaaclab" = {}
+"isaaclab_tasks" = {}
+
+[[python.module]]
+name = "dog3lab"
