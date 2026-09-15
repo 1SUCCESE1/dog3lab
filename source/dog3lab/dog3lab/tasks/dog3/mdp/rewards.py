@@ -447,6 +447,78 @@ def action_sync(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg, joint_groups:
     return reward
 
 
+def stand_posture(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    command_threshold: float = 0.1,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot", joint_names=[".*(hip|thigh|calf)_joint"]),
+) -> torch.Tensor:
+    """Pull the joints back to the default (symmetric) stance when there is no
+    velocity command.
+
+    The standing local optimum carries no symmetry pressure of its own, so a
+    policy drifts into a skewed stance -- the legs visibly go crooked the instant
+    the FSM hands over from the (symmetric) stand controller to the policy.
+    ``default_joint_l2`` is always on and far too weak to stop it, and a plain
+    always-on symmetry penalty would fight the trot (which is left-right
+    antiphase).  Gating on a near-zero command fixes the stance without touching
+    the gait.
+    """
+    asset: Articulation = env.scene[asset_cfg.name]
+    err = (
+        asset.data.joint_pos[:, asset_cfg.joint_ids]
+        - asset.data.default_joint_pos[:, asset_cfg.joint_ids]
+    )
+    cmd = env.command_manager.get_command(command_name)
+    quiet = (torch.norm(cmd, dim=1) < command_threshold).float()
+    reward = torch.sum(err**2, dim=1) * quiet
+    reward *= torch.clamp(-env.scene["robot"].data.projected_gravity_b[:, 2], 0, 0.7) / 0.7
+    return reward
+
+
+
+def feet_gait(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    sensor_cfg: SceneEntityCfg,
+    cycle_time: float = 0.7,
+    contact_threshold: float = 1.0,
+    command_threshold: float = 0.1,
+) -> torch.Tensor:
+    """Trot (diagonal) gait reward driven by a virtual phase.
+
+    The diagonal pairs alternate: (FL, RR) swing while (FR, RL) support, then swap.
+    A virtual clock ``phi = 2*pi*t/cycle_time`` defines which pair *should* be in
+    swing (``sin(phi) < 0`` -> FL/RR, else FR/RL); the reward counts the feet that
+    are both *supposed* to swing and *actually* airborne.
+
+    Standing still scores 0 (no foot is airborne), so this discriminates a trot
+    from the standing local optimum — unlike a "contact matches schedule" form,
+    which pays a constant half-credit while standing.
+
+    ``phi`` matches ``observations.gait_phase`` / the rl_controller ``phases``
+    term, so the policy can read the schedule from its own observation.
+
+    Expects ``sensor_cfg.body_ids`` ordered [FL, FR, RL, RR] (i.e.
+    ``body_names=[".*_FOOT"]`` over LF_FOOT/RF_FOOT/LH_FOOT/RH_FOOT).
+    """
+    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    net_forces = contact_sensor.data.net_forces_w[:, sensor_cfg.body_ids, :]  # (B, 4, 3)
+    airborne = (net_forces.norm(dim=-1) <= contact_threshold).float()  # (B, 4)
+
+    phi = 2 * torch.pi * env.episode_length_buf[:, None] * env.step_dt / cycle_time  # (B, 1)
+    s = torch.sin(phi)
+    # want_swing: FL, RR when sin<0 ; FR, RL when sin>0
+    want_swing = torch.cat([s < 0, s > 0, s > 0, s < 0], dim=-1).float()  # (B, 4)
+
+    reward = torch.sum(want_swing * airborne, dim=1) / 2.0
+    # no credit when there is no velocity command (don't force a gait while standing)
+    reward *= (torch.norm(env.command_manager.get_command(command_name)[:, :2], dim=1) > command_threshold).float()
+    # fade out when the robot is tipped over
+    reward *= torch.clamp(-env.scene["robot"].data.projected_gravity_b[:, 2], 0, 0.7) / 0.7
+    return reward
+
+
 def feet_air_time(
     env: ManagerBasedRLEnv, command_name: str, sensor_cfg: SceneEntityCfg, threshold: float
 ) -> torch.Tensor:

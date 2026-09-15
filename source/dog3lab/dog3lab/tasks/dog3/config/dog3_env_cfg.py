@@ -30,6 +30,11 @@ import dog3lab.tasks.dog3.mdp as mdp  # isort: skip
 from dog3lab.assets.dog3 import DOG3_CFG  # isort: skip
 from instinctlab.envs import InstinctLabRLEnvCfg  # isort: skip
 
+# Trot gait cycle [s] shared by the phase observation and the diagonal-gait reward.
+# The rl_controller computes its phase at 2*pi/GAIT_CYCLE_TIME for sim2sim, so the
+# two must stay in sync (and the controller's phase rate must be set to match).
+GAIT_CYCLE_TIME = 1.0
+
 ##
 # Scene definition
 ##
@@ -161,6 +166,13 @@ class ObservationsCfg:
             scale=0.05,
         )
         actions = ObsTerm(func=mdp.last_action, clip=(-100.0, 100.0), scale=1.0)
+        # trot gait phase (last term -> rl_controller lists "phases" last too)
+        gait_phase = ObsTerm(
+            func=mdp.gait_phase,
+            params={"cycle_time": GAIT_CYCLE_TIME},
+            clip=(-1.0, 1.0),
+            scale=1.0,
+        )
 
         def __post_init__(self):
             self.enable_corruption = True
@@ -192,6 +204,12 @@ class ObservationsCfg:
             scale=0.05,
         )
         actions = ObsTerm(func=mdp.last_action, clip=(-100.0, 100.0), scale=1.0)
+        gait_phase = ObsTerm(
+            func=mdp.gait_phase,
+            params={"cycle_time": GAIT_CYCLE_TIME},
+            clip=(-1.0, 1.0),
+            scale=1.0,
+        )
         height_scan = ObsTerm(
             func=mdp.height_scan,
             params={"sensor_cfg": SceneEntityCfg("height_scanner")},
@@ -340,7 +358,7 @@ class RewardsCfg:
     # -- joint regularization
     joint_acc_l2 = RewTerm(
         func=mdp.joint_acc_l2,
-        weight=-2.5e-7,
+        weight=-1e-6,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*"])},
     )
     joint_power = RewTerm(
@@ -358,7 +376,7 @@ class RewardsCfg:
         weight=-1.0,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*"]), "soft_ratio": 0.9},
     )
-    action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.02)
+    action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.03)
 
     # -- contacts
     undesired_contacts = RewTerm(
@@ -382,19 +400,38 @@ class RewardsCfg:
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*(hip|thigh|calf)_joint"])},
     )
 
+    # hold the default (symmetric) stance when idle -- the policy otherwise drifts
+    # into a skewed standing pose; gated on zero command so the trot is untouched
+    stand_posture = RewTerm(
+        func=mdp.stand_posture,
+        weight=-2.0,
+        params={
+            "command_name": "base_velocity",
+            "asset_cfg": SceneEntityCfg("robot", joint_names=[".*(hip|thigh|calf)_joint"]),
+        },
+    )
     # -- gait / feet (step ③: enable/raise after the robot can stand & track)
-    feet_air_time = RewTerm(
-        func=mdp.feet_air_time,
-        weight=0.75,
+    feet_gait = RewTerm(
+        func=mdp.feet_gait,
+        weight=0.3,
         params={
             "command_name": "base_velocity",
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=[".*_FOOT"]),
-            "threshold": 0.5,
+            "cycle_time": GAIT_CYCLE_TIME,
+        },
+    )
+    feet_air_time = RewTerm(
+        func=mdp.feet_air_time,
+        weight=1.0,
+        params={
+            "command_name": "base_velocity",
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=[".*_FOOT"]),
+            "threshold": 0.35,
         },
     )
     feet_slide = RewTerm(
         func=mdp.feet_slide,
-        weight=-0.1,
+        weight=-0.12,
         params={
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=[".*_FOOT"]),
             "asset_cfg": SceneEntityCfg("robot", body_names=[".*_FOOT"]),

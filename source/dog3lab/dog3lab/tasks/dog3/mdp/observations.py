@@ -41,6 +41,33 @@ def phase(env: ManagerBasedRLEnv, cycle_time: float) -> torch.Tensor:
     return phase_tensor
 
 
+def gait_phase(env: ManagerBasedRLEnv, cycle_time: float) -> torch.Tensor:
+    """6-dim gait phase, matching rl_controller's ``phases`` observation layout.
+
+    ``phi = 2*pi*t/cycle_time`` -> ``[sin(phi), cos(phi), sin(phi/2), cos(phi/2),
+    sin(phi/4), cos(phi/4)]``.
+
+    ``FSMState_RL::update_observations`` builds the same six values from its own
+    clock, so a policy consuming this term can be deployed in the sim2sim stack by
+    listing ``"phases"`` in ``controllers.yaml`` (no C++ change), provided the
+    controller's phase rate matches ``2*pi/cycle_time``.
+    """
+    if not hasattr(env, "episode_length_buf") or env.episode_length_buf is None:
+        env.episode_length_buf = torch.zeros(env.num_envs, device=env.device, dtype=torch.long)
+    phi = 2 * torch.pi * env.episode_length_buf[:, None] * env.step_dt / cycle_time
+    return torch.cat(
+        [
+            torch.sin(phi),
+            torch.cos(phi),
+            torch.sin(phi / 2),
+            torch.cos(phi / 2),
+            torch.sin(phi / 4),
+            torch.cos(phi / 4),
+        ],
+        dim=-1,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Privileged observation terms (critic-only)
 # Mirrors the reference ``LocomotionWithNP3O`` priv_latent subset that can be

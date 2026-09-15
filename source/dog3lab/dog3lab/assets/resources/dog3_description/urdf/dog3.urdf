@@ -361,7 +361,7 @@
     </collision>
   </link>
   <joint name="LH_FOOT_joint" type="fixed">
-    <origin xyz="-0.0965776536 -0.03089611695 -0.2449908695" rpy="0 0 0" />
+    <origin xyz="-0.06157765364946 -0.03089611695 -0.2449908695" rpy="0 0 0" />
     <parent link="RL_calf" />
     <child link="LH_FOOT" />
     <axis xyz="0 0 0" />
@@ -476,7 +476,7 @@
     </collision>
   </link>
   <joint name="RH_FOOT_joint" type="fixed">
-    <origin xyz="-0.0968978639 0.03015880125 -0.2425423888" rpy="0 0 0" />
+    <origin xyz="-0.06189786389862 0.03015880125 -0.2425423888" rpy="0 0 0" />
     <parent link="RR_calf" />
     <child link="RH_FOOT" />
     <axis xyz="0 0 0" />
