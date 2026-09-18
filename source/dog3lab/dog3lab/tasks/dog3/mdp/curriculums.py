@@ -64,8 +64,13 @@ def command_levels_lin_vel(
 ) -> None:
     """command_levels_lin_vel"""
     base_velocity_ranges = env.command_manager.get_term("base_velocity").cfg.ranges
-    # Get original velocity ranges (ONLY ON FIRST EPISODE)
-    if env.common_step_counter == 0:
+    # Get original velocity ranges (ONLY ONCE). Guard on the captured attr, NOT on
+    # common_step_counter == 0: env.reset() runs while the counter is still 0 (the
+    # vec-env wrapper resets at construction and the Instinct-RL runner resets again
+    # in its __init__), so a counter-based guard fires twice and re-scales the
+    # already-scaled ranges (0.1 -> 0.01), locking the command cap at 10% of the
+    # intended range. dog3 was trained with this bug and could never exceed ~0.1 m/s.
+    if not hasattr(env, "_original_vel_x"):
         env._original_vel_x = torch.tensor(base_velocity_ranges.lin_vel_x, device=env.device)
         env._original_vel_y = torch.tensor(base_velocity_ranges.lin_vel_y, device=env.device)
         env._initial_vel_x = env._original_vel_x * range_multiplier[0]
@@ -107,8 +112,10 @@ def command_levels_ang_vel(
 ) -> None:
     """command_levels_ang_vel"""
     base_velocity_ranges = env.command_manager.get_term("base_velocity").cfg.ranges
-    # Get original angular velocity ranges (ONLY ON FIRST EPISODE)
-    if env.common_step_counter == 0:
+    # Get original angular velocity ranges (ONLY ONCE). Idempotent guard: env.reset()
+    # runs while common_step_counter is still 0, so a counter-based guard fires twice
+    # and re-scales the already-scaled range (see command_levels_lin_vel).
+    if not hasattr(env, "_original_ang_vel_z"):
         env._original_ang_vel_z = torch.tensor(base_velocity_ranges.ang_vel_z, device=env.device)
         env._initial_ang_vel_z = env._original_ang_vel_z * range_multiplier[0]
         env._final_ang_vel_z = env._original_ang_vel_z * range_multiplier[1]

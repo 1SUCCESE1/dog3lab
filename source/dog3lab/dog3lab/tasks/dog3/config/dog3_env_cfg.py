@@ -51,7 +51,7 @@ class SceneCfg(InteractiveSceneCfg):
         terrain_generator=ROUGH_TERRAINS_CFG.replace(
             horizontal_scale=0.1,  # 0.1 → 0.2: 4× fewer triangles per tile (6400→1600)
         ),
-        max_init_terrain_level=5,
+        max_init_terrain_level=2,
         collision_group=-1,
         physics_material=sim_utils.RigidBodyMaterialCfg(
             friction_combine_mode="multiply",
